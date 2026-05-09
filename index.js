@@ -23,7 +23,7 @@ bot.onText(/\/start/, (msg) => {
   const keyboard = {
     reply_markup: {
       inline_keyboard: [
-        [{ text: '📢 안사스 젠 완료 (5초 뒤 카운트)', callback_data: 'spawn_안사스' }],
+        [{ text: '📢 안사스 젠 완료 (2초 뒤 카운트)', callback_data: 'spawn_안사스' }],
         [{ text: '📋 현황 확인', callback_data: 'status' }]
       ]
     }
@@ -42,7 +42,7 @@ bot.on('callback_query', (query) => {
     setTimeout(() => {
       const nextGenTime = BOSS_CONFIG[boss]; // 다음 젠까지 남은 초
       startTimer(chatId, boss, nextGenTime);
-    }, 5000); // 5000ms = 5초
+    }, 2000); // 2000ms = 2초
   }
 });
 
