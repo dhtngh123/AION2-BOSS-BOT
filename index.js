@@ -1,4 +1,3 @@
-JavaScript
 const TelegramBot = require('node-telegram-bot-api');
 
 // 텔레그램 토큰 (Railway Variables에 넣은 값을 불러옵니다)
