@@ -1,111 +1,76 @@
 const TelegramBot = require('node-telegram-bot-api');
-
-// 텔레그램 토큰 (Railway Variables에 넣은 값을 불러옵니다)
-const token = process.env.DISCORD_TOKEN || process.env.TELEGRAM_TOKEN; 
+const token = process.env.TELEGRAM_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// 보스별 젠 시간 설정 (초 단위 - 예: 3시간 = 10800)
-// 본인의 게임 설정에 맞게 숫자를 수정하세요.
-const BOSSES = {
-  '안사스': 10800,
+const BOSS_CONFIG = {
+  '안사스': 10800, // 3시간 (초 단위)
   '크나쉬': 10800,
-  '우라무': 10800,
-  '세트람': 10800,
-  '가르투아': 10800,
-  '타르탄': 10800,
-  '카샤파': 10800,
-  '라그타': 10800
+  '우라무': 10800
 };
 
-let bossData = {};
+let bossStatus = {}; // 보스별 남은 시간 및 타이머 저장
 
-// 시간 포맷 함수
-const formatTime = (date) => {
-  return date.getHours().toString().padStart(2, '0') + ':' + date.getMinutes().toString().padStart(2, '0');
-};
+// 시간을 00:00:00 형태로 포맷하는 함수
+function formatTime(seconds) {
+  const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+  const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
 
-// 다음 보스 리스트 출력 함수
-const nextList = () => {
-  return Object.entries(bossData)
-    .sort((a, b) => a[1] - b[1])
-    .map(([name, time]) => `${name}: ${formatTime(time)}`)
-    .join('\n');
-};
-
-// 보스 알림 스케줄 (임시 함수)
-const scheduleBoss = (chatId, boss) => {
-  console.log(`${boss} 알림 예약됨`);
-};
-
-// /start 명령어 시 키보드 출력
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   const keyboard = {
     reply_markup: {
       inline_keyboard: [
-        [
-          { text: '안사스', callback_data: 'kill_안사스' },
-        ],
-        [
-          { text: '크나쉬', callback_data: 'kill_크나쉬' },
-          { text: '우라무', callback_data: 'kill_우라무' },
-        ],
-        [
-          { text: '세트람', callback_data: 'kill_세트람' },
-          { text: '가르투아', callback_data: 'kill_가르투아' },
-        ],
-        [
-          { text: '타르탄', callback_data: 'kill_타르탄' },
-          { text: '카샤파', callback_data: 'kill_카샤파' },
-        ],
-        [
-          { text: '라그타', callback_data: 'kill_라그타' },
-        ],
-        [
-          { text: '📋 다음 보스', callback_data: 'next' },
-        ]
+        [{ text: '📢 안사스 젠 완료 (5초 뒤 카운트)', callback_data: 'spawn_안사스' }],
+        [{ text: '📋 현황 확인', callback_data: 'status' }]
       ]
     }
   };
-
-  bot.sendMessage(chatId, '아이온2 필드보스 알람봇', keyboard);
+  bot.sendMessage(chatId, '아이온2 실시간 보스 알람입니다.', keyboard);
 });
 
-// 버튼 클릭 처리
 bot.on('callback_query', (query) => {
   const chatId = query.message.chat.id;
+  const boss = query.data.replace('spawn_', '');
 
-  if (query.data === 'next') {
-    if (Object.keys(bossData).length === 0) {
-      bot.sendMessage(chatId, '등록된 보스가 없습니다.');
-      return;
-    }
-    bot.sendMessage(chatId, `📋 다음 보스 순서\n\n${nextList()}`);
-    return;
-  }
+  if (query.data.startsWith('spawn_')) {
+    bot.sendMessage(chatId, `✅ [${boss}] 젠 확인! 5초 뒤에 다음 젠 카운트다운을 시작합니다.`);
 
-  if (query.data.startsWith('kill_')) {
-    const boss = query.data.replace('kill_', '');
-    const now = new Date();
-    const nextSpawn = new Date(now.getTime() + (BOSSES[boss] || 0) * 1000);
-
-    bossData[boss] = nextSpawn;
-    scheduleBoss(chatId, boss);
-
-    bot.sendMessage(
-      chatId,
-      `✅ ${boss} 등록 완료\n\n다음 젠\n⏰ ${formatTime(nextSpawn)}`
-    );
+    // 1. 5초 뒤에 실행
+    setTimeout(() => {
+      const nextGenTime = BOSS_CONFIG[boss]; // 다음 젠까지 남은 초
+      startTimer(chatId, boss, nextGenTime);
+    }, 5000); // 5000ms = 5초
   }
 });
 
-bot.onText(/\/next/, (msg) => {
-  const chatId = msg.chat.id;
-  if (Object.keys(bossData).length === 0) {
-    bot.sendMessage(chatId, '등록된 보스가 없습니다.');
-    return;
-  }
-  bot.sendMessage(chatId, `📋 다음 보스 순서\n\n${nextList()}`);
-});
+function startTimer(chatId, boss, seconds) {
+  let remaining = seconds;
+  
+  // 실시간 현황판 메시지 전송
+  bot.sendMessage(chatId, `⏰ [${boss}] 다음 젠까지: ${formatTime(remaining)}`).then((sentMsg) => {
+    const messageId = sentMsg.message_id;
 
-console.log('AION2 Boss Bot Running');
+    // 2. 1초마다 메시지 수정 (실시간 연동)
+    const timer = setInterval(() => {
+      remaining -= 1;
+
+      if (remaining <= 0) {
+        clearInterval(timer);
+        bot.editMessageText(`🚨 [${boss}] 지금 출현!! 🚨`, { chat_id: chatId, message_id: messageId });
+        bot.sendMessage(chatId, `🔔 [${boss}] 보스가 나타났습니다! 어서 확인하세요!`);
+      } else {
+        // 메시지 내용을 1초마다 업데이트
+        bot.editMessageText(`⏰ [${boss}] 다음 젠까지: ${formatTime(remaining)}`, {
+          chat_id: chatId,
+          message_id: messageId
+        }).catch(() => {
+          // 메시지 수정 에러 방지 (사용자가 메시지를 지웠을 때 등)
+          clearInterval(timer);
+        });
+      }
+    }, 1000); // 1000ms = 1초
+  });
+}
